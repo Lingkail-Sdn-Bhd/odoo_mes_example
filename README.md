@@ -1,5 +1,10 @@
 # odoo_mes_example
 
+# How to setup your api key, your secret to use this project. Don't push these to the repository
+appsettings.json: Acts as your baseline configuration file. It is committed to source control and should contain default, non-sensitive settings or fallback values (such as standard logging levels or public URLs). If you put sensitive keys here, they will be pushed to your repository.
+
+appsettings.Development.json: Used specifically for local development running on your machine. As long as it is listed in your .gitignore file, it is safe to hold your local development database connection strings, local API keys, and testing URLs.
+
 # Prevent pushing code that contains password, secret key, api key
 To prevent committing and pushing sensitive data like API keys, secret keys, or passwords in a .NET repository, you should use a combination of .gitignore, Secret Manager (for local development), environment variables, and pre-commit hooks.
 

@@ -1,0 +1,1221 @@
+﻿@page "/dashboard"
+@layout DashboardLayout
+@using MudBlazor
+@using ApexCharts
+@using System.Net.Http.Json
+@implements IAsyncDisposable
+
+<PageTitle>Chemical Formulation Cyber-Physical System (CPS)</PageTitle>
+
+<div style="background:#061724";
+            min-height:100vh;
+            padding:20px;
+            color:white;'>
+        
+        <!--Header-->
+        <MudPaper Elevation="0"
+                  Style="background:#08344b";
+                         padding:25px;
+                         border-radius:0;">
+                     
+             <MudText Typo="Typo.h4"        
+                      Style="color:#e5f5ff;
+                             font-weight:bold;">
+                 Chemical Formulation Cyber-Physical System (CPS)        
+             </MudText>
+
+             <MudText Style="color:#5cddff;">
+                 High-Precision Optical Resin Mixing &amp;
+                 Vacuum Degassing - simulated data for presentation
+             </MudText>
+
+
+        </MudPaper>"
+
+        <!-- KPI Cards -->
+        <div class="kpi-grid">
+
+                <MudPaper Class="pa-4" Style="@CardStyle">
+                    <MudText Style="@LabelStyle">
+                        Mixer RPM
+                    </MudText>
+                    <MudText Typo="Typo.h5" Style="@ValueStyle">
+                        @rpm rpm
+                    </MudText>
+                </MudPaper>
+         
+                <MudPaper Class="pa-4" Style="@CardStyle">
+                    <MudText Style="@LabelStyle">
+                        TORQUE
+                    </MudText>
+                    <MudText Typo="Typo.h5" Style="@ValueStyle">
+                    @torque.ToString("F1") Nm
+                </MudText>
+                </MudPaper>
+ 
+                <MudPaper Class="pa-4" Style="@CardStyle">
+                    <MudText Style="@LabelStyle">
+                        TEMPERATURE
+                    </MudText>
+                    <MudText Typo="Typo.h5" Style="@ValueStyle">
+                        @temperature.ToString("F1") °C
+                    </MudText>
+                </MudPaper>
+        
+                <MudPaper Class="pa-4" Style="@CardStyle">
+                    <MudText Style="@LabelStyle">
+                        VACUUM
+                    </MudText>
+                    <MudText Typo="Typo.h5" Style="@ValueStyle">
+                        @vacuum.ToString("F1") kPa
+                    </MudText>
+                </MudPaper>
+     
+                <MudPaper Class="pa-4" Style="@CardStyle">
+                    <MudText Style="@LabelStyle">
+                        HUMIDITY
+                    </MudText>
+                    <MudText Typo="Typo.h5" Style="@ValueStyle">
+                        @humidity.ToString("F1") %
+                    </MudText>
+                </MudPaper>
+        </div>
+
+        <MudButton Variant="Variant.Filled"
+                   Color="MudBlazor.Color.Primary"
+                   Class="mt-4"
+                   Disabled="@isSendingCps"
+                   OnClick="SendCpsData">
+            Send CPS Data
+        </MudButton>
+
+        <MudText Class=mt-3>
+            @cpsResponse
+        </MudText>
+
+        <MudButton Variant="Variant.Filled"
+                   Color="MudBlazor.Color.Secondary"
+                   Class="mt-4" ml-2
+                   Disabled@isSendingCps
+                   OnClick="PreviewCpsToOdoo">
+            Preview CPS to Odoo   
+        </MudButton>
+
+        <!-- Real-Time Mixer Chart -->
+        <MudGrid class="mt-4">
+            <MudItem xs="12" md="6">
+
+                <MudPaper class="pa-4"
+                          style="@CardStyle">
+                     <MudText Typo="Typo.h6"             
+                              Style="color:#36dcff;">
+                          Mixer - Real-Time Process Profile
+                     </MudText>
+
+                     <ApexChart TItem="MixerPoint"
+                                @ref="mixerChart"
+                                Height="300"
+                                Options="chartOptions">
+
+                          <ApexPointSeries TItem="MixerPoint"
+                                           Items="mixerHistory"
+                                           Name="Current Batch"
+                                           SeriesType="SeriesType.Line"
+                                           XValue="p => p.Second"
+                                           YValue="p => (decimal?)p.CurrentRpm" />
+
+                           <ApexPointSeries TItem="MixerPoint"
+                                            Items="mixerHistory"
+                                            Name="Golden Batch"
+                                            SeriesType="SeriesType.Line"
+                                            XValue="p => p.Second"
+                                            YValue="p => (decimal?)p.GoldenRpm" />
+
+                           <ApexPointSeries TItem="MixerPoint"
+                                            Items="mixerHistory"
+                                            Name="Upper/abnormal trend"
+                                            SeriesType="SeriesType.Line"
+                                            XValue="p => p.Second"
+                                            YValue="p => (decimal)p.AbnormalRpm" />
+                     </ApexChart>
+
+                </MudPaper>
+
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4"
+                          Style="@CardStyle">
+
+                    <MudText Typo="Typo.h6"
+                             Style="color:#36dcff;">
+                         Vacuum Chamber - Degassing Profile
+                     </MudText>
+
+                     <ApexChart TItem="VacuumPoint"
+                                @ref="vacuumChart"
+                                Height="300"
+                                Options="vacuumChartOptions">
+                           <ApexPointSeries TItem="VacuumPoint"
+                                            Items="vacuumHistory"
+                                            Name="Current Batch"
+                                            SeriesType="SeriesType.Line"
+                                            XValue="p => p.Second"
+                                            YValue="p => (decimal)p.CurrentVacuum" />
+
+                            <ApexPointSeries TItem="VacuumPoint"
+                                             Items="vacuumHistory"
+                                             Name="Golden Batch"
+                                             SeriesType="SeriesType.Line"
+                                             XValue="p => p.Second"
+                                             YValue="p => (decimal?)p.GoldenVacuum" />
+
+                            <ApexPointSeries TItem="VacuumPoint"
+                                             Items="vacuumHistory"
+                                             Name="Abnormal/slow pull-down"
+                                             SeriesType="SeriesType.Line"
+                                             XValue="p => p.Second"
+                                             YValue="p => (decimal?)p.AbnormalVacuum" />
+                   
+
+                     </ApexChart>
+
+                </MudPaper>
+
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4"
+                          Style="@CardStyle">
+                             
+                    <MudText Typo="Typo.h6" 
+                             Style="color:#36dcff;">
+                        Viscosity Prediction
+                    </MudText>
+
+                    <ApexChart TItem="ViscosityPoint"
+                               @ref="viscosityChart"
+                               Height="300"
+                               Options="viscosityChartOptions">
+
+                         <ApexPointSeries TItem="ViscosityPoint"
+                                          Items="viscosityHistory"
+                                          Name="Predicted Viscosity"
+                                          SeriesType="SeriesType.Line"
+                                          XValue="p => p.Second"
+                                          YValue="p => (decimal?)p.CurrentViscosity" />
+                           
+                         <ApexPointSeries TItem="ViscosityPoint"
+                                          Items="viscosityHistory"
+                                          Name="Golden Batch"
+                                          SeriesType="SeriesType.Line"
+                                          XValue="p => p.Second"
+                                          YValue="p => (decimal?)p.GoldenViscosity" />
+                     </ApexChart>
+                             
+                 </MudPaper>
+
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4"
+                          Style="@CardStyle">
+
+                    <MudText Typo="Typo.h6"
+                             Style="color:#36dcff;">
+                         Exotherm Rate - dT/dt
+                    </MudText>
+
+                    <ApexChart TItem="ExothermPoint"
+                               @ref="exothermChart"
+                               Height="300"
+                               Options="exothermChartOptions">
+                           
+                         <ApexPointSeries TItem="ExothermPoint" 
+                                          Items="exothermHistory"
+                                          Name="Current Batch"
+                                          Color="#24ccff"
+                                          SeriesType="SeriesType.Line"
+                                          XValue="p => p.Second"
+                                          YValue="p => (decimal?)p.CurrentRate" />
+
+                         <ApexPointSeries TItem="ExothermPoint"
+                                          Items="exothermHistory"
+                                          Name="Golden Batch"
+                                     Color="#24e7bc"
+                                          SeriesType="SeriesType.Line"
+                                          XValue="p => p.Second"
+                                          YValue="p => (decimal?)p.GoldenRate" />
+
+                         <ApexPointSeries TItem="ExothermPoint"
+                                          Items="exothermHistory"
+                                          Name="Alarm Threshold"
+                                          Color="#ffc247"
+                                          SeriesType="SeriesType.Line"
+                                          XValue="p =>p.Second"
+                                          YValue="p => (decimal?)p.AlarmThreshold" />
+                        
+                           
+                    </ApexChart>
+
+                </MudPaper>
+
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4"
+                          Style="@CardStyle">
+
+                   <MudText Typo="Typo.h6"
+                            Style="color:#36dcff;">
+                       Torque Profile - Material Resistance
+                   </MudText>
+
+                   <ApexChart TItem="TorquePoint"
+                              @ref="torqueChart"
+                              Height="300"
+                              Options="torqueChartOptions">
+
+                        <ApexPointSeries TItem="TorquePoint"
+                                         Items="torqueHistory"
+                                         Name="Current Batch"
+                                         SeriesType="SeriesType.Line"
+                                         XValue="p => p.Second"
+                                         YValue="p => (decimal?)p.CurrentTorque" />
+
+                        <ApexPointSeries TItem="TorquePoint"
+                                         Items="torqueHistory"
+                                         Name="Golden Batch"
+                                         SeriesType="SeriesType.Line"
+                                         XValue="p => p.Second"
+                                         YValue="p => (decimal?)p.GoldenTorque" />
+                   </ApexChart>
+
+                </MudPaper>
+
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4"
+                          Style="@CardStyle">
+
+                   <MudText Typo="Typo.h6"
+                            Style="color:#36dcff;">
+                       Temperature Profile - Jacket / Resin
+                   </MudText>
+
+                   <ApexChart TItem="TemperaturePoint"
+                              @ref="temperatureChart"
+                              Height="300"
+                              Options="temperatureChartOptions">
+                          
+                        <ApexPointSeries TItem="TemperaturePoint"
+                                         Items="temperatureHistory"
+                                         Name="Current Batch"
+                                         SeriesType="SeriesType.Line"
+                                         XValue="p => p.Second"
+                                         YValue="p => (decimal?)p.CurrentTemperature" />
+ 
+                        <ApexPointSeries TItem="TemperaturePoint"  
+                                         Items="temperatureHistory"
+                                         Name="Golden Batch"
+                                         SeriesType="SeriesType.Line"
+                                         XValue="p => p.Second"
+                                         YValue="p => (decimal?)p.GoldenTemperature" />
+
+
+                   </ApexChart>
+
+                </MudPaper>
+
+            </MudItem>
+
+        </MudGrid>
+
+        <!-- 5C CYBER-PHYSICAL CLOSED LOOP-->
+
+        <MudPaper Class="pa-4 mt-4"
+                  Style="@CardStyle">
+              
+            <MudText Typo="Typo.h6"
+                     Style="color:#36dcff; margin-bottom:12px">
+                 5C Cyber-Physical Closed Loop
+                 </MudText>
+
+                 <div class="five-c-grid">
+
+                         <MudPaper Class="pa-3" Style="@FiveCStyle">
+                             <MudText Style="@FiveCTitleStyle">
+                                 C1 Connection
+                             </MudText>
+                             <MudText Style="@FiveCTextStyle">
+                        RPM • Torque • RTD • Vacuum • Weight
+                             </MudText>
+                         </MudPaper>
+
+                         <MudPaper Class="pa-3" Style="@FiveCStyle">
+                             <MudText Style="@FiveCTitleStyle">
+                                 C2 Conversion
+                             </MudText>
+                             <MudText Style="@FiveCTextStyle">
+                                 Process profiles &amp; real-time features
+                             </MudText>
+                         </MudPaper>
+                     
+
+                     
+                         <MudPaper Class="pa-3" Style="@FiveCStyle">
+                             <MudText Style="@FiveCTextStyle">
+                                 C3 Cyber
+                             </MudText>
+                             <MudText Style="@FiveCTextStyle">
+                        Batch database • Golden Batch
+                             </MudText>
+                         </MudPaper>
+                     
+
+                     
+                         <MudPaper Class="pa-3" Style="@FiveCStyle">
+                             <MudText Style="@FiveCTitleStyle">
+                                 C4 Cognition
+                             </MudText>
+                             <MudText Style="@FiveCTextStyle">
+                        Prediction • Anomaly detection
+                             </MudText>
+                         </MudPaper>
+                     
+
+                     
+                         <MudPaper Class="pa-3"Style="@FiveCStyle">
+                             <MudText Style="@FiveCTitleStyle">
+                                 C5 Configuration
+                             </MudText>
+                             <MudText Style=@FiveCTextStyle">
+                                 Auto RPM • Chiller • Vacuum time
+                             </MudText>
+                         </MudPaper>
+
+                </div>
+        </MudPaper>
+              
+
+              <!-- SIMULATED CLOSED-LOOP DECISION -->
+              
+              <MudPaper Class="pa-4 mt-4"
+                        style="@CardStyle">
+
+                 <MudText Typo="Typo.h6"
+                          style="color:#36dcff; margin-bottom:14px;">
+                     Simulated Closed-Loop Decision
+                 </MudText>
+
+                 <MudStack Spacing="3">
+
+                     <MudText Style="color:white;">
+                         <span style="color:#24e7bc; font-weight:bold;">
+                            ● NORMAL:
+                         </span>
+                         Current torque and temperature remain inside 
+                         the Golden Batch envelope
+                     </MudText>
+
+                     <MudText style="color:white;">
+                         <span style="color:#ffc247; font-weight:bold;">
+                        ● CONTROL LOGIC:
+                         </span>
+                         If torque rises above the upper envelope,
+                         reduce VFD speed or extend mixing time.
+                         If temperature rises too quickly,
+                         open the automated chiller valve.
+                     </MudText>
+
+                     <MudText style="color:white;">
+                         <span style="color:#24e7bc;" font-weight:bold">
+                            ● VACUUM:
+                         </span>
+                         If target vacuum is not reached within the 
+                         expected pull-down time, trigger a 
+                         leak/degassing alarm and extend the vacuum hold.
+                     </MudText>
+
+                 </MudStack>
+
+        </MudPaper>
+                
+
+</div>
+
+@code {
+    private int rpm = 287;
+    private double torque = 12.8;
+    private double temperature = 38.0;
+    private double vacuum = -95.5;
+    private double humidity = 55.0;
+
+    private bool isSendingCps = false;
+    private bool cpsSuccess = false;
+    private string cpsResponse = "";
+
+    [Inject]
+    private IHttpClientFactory HttpClientFactory { get; set; } = default!;
+
+    [Inject]
+    private NavigationManager Navigation { get; set; } = default!;
+
+    private async Task SendCpsData()
+    {
+        isSendingCps = true;
+        cpsSuccess = false;
+        cpsResponse = "";
+
+        try
+        {
+            var sensorData = new 
+            {
+                rpm,
+                torque,
+                temperature,
+                vacuum
+            };
+
+            using var client = HttpClientFactory.CreateClient();
+            client.BaseAddress = new Uri(Navigation.BaseUri);
+
+            using var response =
+                await client.PostAsJsonAsync(
+                    "api/sensor",
+                    sensorData);
+
+            var result =
+                await response.Content.ReadAsStringAsync();
+
+            cpsSuccess = response.IsSuccessStatusCode;
+
+            if (cpsSuccess)
+            {
+                cpsResponse = "SUCCESS! CPS data sent to local API. " + result;
+            }
+            else
+            {
+                cpsResponse = "FAILED! " + result;
+            }
+        }
+        catch (Exception ex)
+        {
+            cpsSuccess = false;
+            cpsResponse = "ERROR: " + ex.Message;
+        }
+        finally
+        {
+            isSendingCps = false;
+        }
+    }
+
+    private async Task PreviewCpsToOdoo()
+    {
+        isSendingCps = true;
+        cpsSuccess = false;
+        cpsResponse = "";
+
+        try
+        {
+            var data = new
+            {
+                rpm,
+                torque,
+                temperature,
+                vacuum
+            };
+
+            using var client = HttpClientFactory.CreateClient();
+            client.BaseAddress = new Uri(Navigation.BaseUri);
+
+            using var response = await client.PostAsJsonAsync(
+                "api/cps-odoo-preview",
+                data);
+
+            var result =
+                await response.Content.ReadAsStringAsync();
+
+            cpsSuccess = response.IsSuccessStatusCode;
+
+            if (cpsSuccess)
+            {
+                cpsResponse = "SUCCESS! " + result;
+            }
+            else
+            {
+                cpsResponse = "FAILED! " + result;
+            }
+        }
+        catch (Exception ex)
+        {
+            cpsSuccess = false;
+            cpsResponse = "ERROR: " + ex.Message;
+        }
+        finally
+        {
+            isSendingCps = false;
+        }
+    }
+
+
+    private PeriodicTimer? timer;
+    private CancellationTokenSource? cancellation;
+    private Task? simulationTask;
+
+    private string CardStyle =
+        "background:#071e2e; border:1px solid #086c8c; border-radius:12px;";
+
+    private string LabelStyle =
+        "color:#9ddfff; font-size:12px;";
+
+    private string ValueStyle =
+       "color:#22e6c1; font-weight:bold;";
+
+    private string FiveCStyle =
+        "background:#082a3b;" +
+        "border:1px solid #086c6c;" +
+        "border-radius:10px;" +
+        "text-align:center;" +
+        "min-height:95px;";
+
+    private string FiveCTitleStyle =
+        "color:#36dcff;" +
+        "font-size:16px;" +
+        "font-weight:bold;";
+
+    private string FiveCTextStyle =
+        "color:#d7f5ff;" +
+        "font-size:13px;" +
+        "margin-top:6px;";
+
+
+    protected override void OnInitialized()
+    {
+        cancellation = new CancellationTokenSource();
+        timer = new PeriodicTimer(
+            TimeSpan.FromSeconds(1));
+
+        simulationTask = RunSimulationAsync(
+            cancellation.Token);
+    }
+
+    private async Task RunSimulationAsync(
+        CancellationToken token)
+    {
+        try
+        {
+            while (timer != null &&
+                  await timer.WaitForNextTickAsync(token))
+            {
+                await InvokeAsync(async () =>
+                {
+                    rpm = 287 + Random.Shared.Next(-5, 6);
+
+                    torque = 12.8 +
+                       (Random.Shared.NextDouble() - 0.5);
+
+                    temperature = 38.0 +
+                        (Random.Shared.NextDouble() - 0.5);
+
+                    vacuum = -95.5 +
+                        (Random.Shared.NextDouble() - 0.5);
+
+                    viscosity = 46000 +
+                        (Random.Shared.NextDouble() - 0.5) * 600;
+
+                    exothermRate = Math.Clamp(
+                        exothermRate +
+                        (Random.Shared.NextDouble() - 0.5) * 0.08,
+                        1.1,
+                        1.8
+                    );
+
+                    humidity = 55.0 +
+                        (Random.Shared.NextDouble() * 15);
+
+                    elapsedSeconds++;
+
+                    // Keep only the latest 30 readings
+                    if (mixerHistory.Count > 30)
+                    {
+                        mixerHistory.RemoveAt(0);
+                    }
+
+                    StateHasChanged();
+
+                    if (mixerChart != null)
+                    {
+                        await mixerChart.UpdateSeriesAsync();
+                    }
+
+                    if (vacuumChart != null)
+                    {
+                        await vacuumChart.UpdateSeriesAsync();
+                    }
+
+                    if (viscosityChart != null)
+                    {
+                        await viscosityChart.UpdateSeriesAsync();
+                    }
+
+                    if (exothermChart != null)
+                    {
+                        await exothermChart.UpdateSeriesAsync();
+                    }
+
+                    if (torqueChart != null)
+                    {
+                        await torqueChart.UpdateSeriesAsync();
+                    }
+
+                    if (temperatureChart != null)
+                    {
+                        await temperatureChart.UpdateSeriesAsync();
+                    }
+
+                    mixerHistory.Add(new MixerPoint
+                    {
+                        Second = elapsedSeconds,
+                        CurrentRpm = rpm,
+                        GoldenRpm = 287,
+                        AbnormalRpm = 287 + Math.Min(elapsedSeconds * 0.5, 80)
+                    });
+
+                    vacuumHistory.Add(new VacuumPoint
+                        {
+                            Second = elapsedSeconds,
+                            CurrentVacuum = vacuum,
+                            GoldenVacuum = -95.5,
+
+                            AbnormalVacuum = -95.5 +
+                                4.0 * Math.Exp(-elapsedSeconds / 25.0)
+                        });
+
+                    if (vacuumHistory.Count > 30)
+                    {
+                        vacuumHistory.RemoveAt(0);
+                    }
+
+                    viscosityHistory.Add(new ViscosityPoint
+                        {
+                            Second = elapsedSeconds,
+                            CurrentViscosity = viscosity,
+                            GoldenViscosity = 48000,
+                        });
+
+                    if (viscosityHistory.Count > 30)
+                    {
+                        viscosityHistory.RemoveAt(0);
+                    }
+
+                    exothermHistory.Add(new ExothermPoint
+                        {
+                            Second = elapsedSeconds,
+                            CurrentRate = exothermRate,
+                            GoldenRate = 0.25,
+                            AlarmThreshold = 3.0
+                        });
+
+                    if (exothermHistory.Count > 30)
+                    {
+                        exothermHistory.RemoveAt(0);
+                    }
+
+                    torqueHistory.Add(new TorquePoint
+                    {
+                        Second = elapsedSeconds,
+                        CurrentTorque = torque,
+                        GoldenTorque = 10.0
+                    });
+
+                    temperatureHistory.Add(new TemperaturePoint
+                        {
+                            Second = elapsedSeconds,
+                            CurrentTemperature = temperature,
+                            GoldenTemperature = 32.0
+                        });
+
+                    if (temperatureHistory.Count > 30)
+                    {
+                        temperatureHistory.RemoveAt(0);
+                    }
+
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            //Expected when leaving the dashboard
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (cancellation != null)
+        {
+            await cancellation.CancelAsync();
+        }
+
+        if (simulationTask != null)
+        {
+            await simulationTask;
+        }
+
+        timer?.Dispose();
+        cancellation?.Dispose();
+    }
+
+    private ApexChart<MixerPoint>? mixerChart;
+
+    private ApexChartOptions<MixerPoint> chartOptions = new()
+        {
+            Chart = new Chart
+            {
+                Background = "#071e2e",
+                ForeColor = "#c8e6f2",
+
+                Toolbar = new Toolbar
+                {
+                    Show = false
+                },
+
+                Animations = new Animations
+                {
+                    Enabled = false
+                }
+            },
+
+            Stroke = new Stroke
+            {
+                Curve = Curve.Straight,
+                Width = 2,
+                DashArray = new List<int> { 0, 5, 0 }
+            },
+
+            Colors = new List<string>
+        {
+            "#24ccff",
+            "#24e7bc",
+            "#ff4d6d"
+        },
+
+            Yaxis = new List<YAxis>
+        {
+            new YAxis
+            {
+                Min = 0,
+                Max = 800,
+                TickAmount = 5,
+                Title = new AxisTitle
+                {
+                    Text = "RPM"
+                }
+            }
+        },
+
+            Grid = new Grid
+            {
+                BorderColor = "#1b3545"
+            },
+
+            DataLabels = new DataLabels
+            {
+                Enabled = false
+            },
+
+            Markers = new Markers
+            {
+                Size = 0
+            }
+        };
+
+    private List<MixerPoint> mixerHistory = new();
+
+    private int elapsedSeconds = 0;
+
+    public class MixerPoint
+    {
+        public int Second { get; set; }
+        public double CurrentRpm { get; set; }
+        public double GoldenRpm { get; set; }
+        public double AbnormalRpm { get; set; }
+    }
+
+    private ApexChart<VacuumPoint>? vacuumChart;
+
+    private List<VacuumPoint> vacuumHistory = new();
+
+    private ApexChartOptions<VacuumPoint> vacuumChartOptions = new()
+    {
+            Chart = new Chart
+            {
+                Background = "#071e2e",
+                ForeColor = "#8bdcff",
+
+                Toolbar = new Toolbar
+                {
+                    Show = false
+                },
+
+                Animations = new Animations
+                {
+                    Enabled = false
+                }
+            },
+
+            Stroke = new Stroke
+            {
+                Curve = Curve.Straight,
+                Width = 2,
+                DashArray = new List<int> { 0, 5, 0 }
+            },
+
+            Colors = new List<string>
+            {
+                "#24ccff",
+                "#24e7bc",
+                "#ff4d6d"
+            },
+
+            Yaxis = new List<YAxis>
+            {
+               new YAxis
+               {
+                    Min = -100,
+                    Max = 0,
+                    TickAmount = 5,
+                    DecimalsInFloat = 0,
+                    Title = new AxisTitle
+                    {
+                       Text = "Pressure (kPa)"
+                    }
+                }
+            },
+
+            Grid = new Grid
+            {
+                BorderColor = "#1b3545"
+            },
+
+            DataLabels = new DataLabels
+            {
+                Enabled = false
+            },
+
+            Markers = new Markers
+            {
+                Size = 0
+            }
+    };
+
+
+    public class VacuumPoint
+    {
+        public int Second { get; set; }
+        public double CurrentVacuum { get; set; }
+        public double GoldenVacuum { get; set; }
+        public double AbnormalVacuum { get; set; }
+    }
+
+    private ApexChart<ViscosityPoint>? viscosityChart;
+
+    private List<ViscosityPoint> viscosityHistory = new();
+
+    private double viscosity = 46000;
+
+    private ApexChartOptions<ViscosityPoint> viscosityChartOptions = new()
+        {
+            Chart = new Chart
+            {
+                Background = "#071e2e",
+                ForeColor = "#8bdcff",
+                Toolbar = new Toolbar { Show = false },
+                Animations = new Animations { Enabled = false }
+            },
+
+            Stroke = new Stroke
+            {
+                Curve = Curve.Straight,
+                Width = 2,
+                DashArray = new List<int> { 0, 5 }
+            },
+
+            Colors = new List<string>
+        {
+           "#24ccff",
+           "#24e7bc"
+        },
+
+            Yaxis = new List<YAxis>
+        {
+            new YAxis
+            {
+                Min = 0,
+                Max = 60000,
+                TickAmount = 5,
+
+                Labels = new YAxisLabels
+                {
+                    Formatter = "function(value) { return value.toFixed(0); }"
+                },
+
+                Title = new AxisTitle
+                {
+                    Text = "Viscosity (cP)"
+                }
+
+            }
+        },
+
+            Grid = new Grid
+            {
+                BorderColor = "#1b3545"
+            },
+
+            DataLabels = new DataLabels
+            {
+                Enabled = false
+            },
+
+            Markers = new Markers
+            {
+                Size = 0
+            },
+        };
+
+    public class ViscosityPoint
+    {
+        public int Second { get; set; }
+        public double CurrentViscosity { get; set; }
+        public double GoldenViscosity { get; set; }
+    }
+
+    private ApexChart<ExothermPoint>? exothermChart;
+
+    private List<ExothermPoint> exothermHistory = new();
+
+    private double exothermRate = 1.5;
+
+    private ApexChartOptions<ExothermPoint> exothermChartOptions = new()
+        {
+            Chart = new Chart
+            {
+                Background = "#071e2e",
+                ForeColor = "#8bdcff",
+
+                Toolbar = new Toolbar
+                {
+                    Show = false
+                },
+
+                Animations = new Animations
+                {
+                    Enabled = false
+                }
+            },
+
+            Stroke = new Stroke
+            {
+                Curve = Curve.Straight,
+                Width = 2,
+                DashArray = new List<int> { 0, 5, 5 }
+            },
+
+            Colors = new List<string>
+        {
+            "#24ccff",
+            "#24e7bc",
+            "ffc247"
+        },
+
+            Yaxis = new List<YAxis>
+        {
+            new YAxis
+            {
+                Min = 0,
+                Max = 5,
+                TickAmount = 5,
+                DecimalsInFloat = 0,
+                Title = new AxisTitle
+                {
+                    Text = "dT/dt (°C/min)"
+                }
+            }
+        },
+
+            Grid = new Grid
+            {
+                BorderColor = "#1b3545"
+            },
+
+            DataLabels = new DataLabels
+            {
+                Enabled = false
+            },
+
+            Markers = new Markers
+            {
+                Size = 0
+            }
+        };
+
+    public class ExothermPoint
+    {
+        public int Second { get; set; }
+        public double CurrentRate { get; set; }
+        public double GoldenRate { get; set; }
+        public double AlarmThreshold { get; set; }
+    }
+
+    private ApexChart<TorquePoint>? torqueChart;
+
+    private List<TorquePoint> torqueHistory = new();
+
+    private ApexChartOptions<TorquePoint> torqueChartOptions = new()
+    {
+        Chart = new Chart
+        {
+            Background = "#071e2e",
+            ForeColor = "#8bdcff",
+
+            Toolbar = new Toolbar
+            {
+                Show = false
+            },
+
+            Animations = new Animations
+            {
+                Enabled = false
+            }
+        },
+
+        Stroke = new Stroke
+        {
+            Curve = Curve.Straight,
+            Width = 2,
+            DashArray = new List<int> { 0, 5 }
+        },
+
+        Colors = new List<string>
+        {
+            "#24ccff",
+            "#24e7bc"
+        },
+
+        Yaxis = new List<YAxis>
+        {
+            new YAxis
+            {
+                Min = 0,
+                Max = 25,
+                TickAmount = 5,
+                DecimalsInFloat = 0,
+
+                Title = new AxisTitle
+                {
+                    Text = "Torque (Nm)"
+                }
+            }
+        },
+
+        Grid = new Grid
+        {
+            BorderColor = "#1b3545"
+        },
+
+        DataLabels = new DataLabels
+        {
+            Enabled = false
+        },
+
+        Markers = new Markers
+        {
+            Size = 0
+        }
+    };
+
+    public class TorquePoint
+    {
+        public int Second { get; set; }
+        public double CurrentTorque { get; set; }
+        public double GoldenTorque { get; set; }
+    }
+
+    private ApexChart<TemperaturePoint>? temperatureChart;
+
+    private List<TemperaturePoint> temperatureHistory = new();
+
+    private ApexChartOptions<TemperaturePoint> temperatureChartOptions = new()
+    {
+        Chart = new Chart
+        {
+            Background = "#071e2e",
+            ForeColor = "#8bdcff",
+
+            Toolbar = new Toolbar
+            {
+                Show = false
+            },
+
+            Animations = new Animations
+            {
+                Enabled = false
+            }
+},
+
+        Stroke = new Stroke
+        {
+            Curve = Curve.Straight,
+            Width = 2,
+            DashArray = new List<int> { 0, 5 }
+        },
+
+        Colors = new List<string>
+        {
+            "#24ccff",
+            "#24e7bc"
+        },
+
+        Yaxis = new List<YAxis>
+        {
+            new YAxis
+            {
+                Min = 20,
+                Max = 50,
+                TickAmount = 5,
+                DecimalsInFloat = 0,
+
+                Title = new AxisTitle
+                {
+                    Text = "Temperature (°C)"
+                }
+            }
+        },
+
+        Grid = new Grid
+        {
+            BorderColor = "#1b3545"
+        },
+
+        DataLabels = new DataLabels
+        {
+            Enabled = false
+        },
+
+        Markers = new Markers
+        {
+            Size = 0
+        }
+    };
+        
+    
+    public class TemperaturePoint
+    {
+        public int Second { get; set; }
+        public double CurrentTemperature { get; set; }
+        public double GoldenTemperature { get; set; }
+    }
+
+}

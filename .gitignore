@@ -55,3 +55,16 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Ignore local and user-specific application settings
+**/appsettings.Development.json
+**/appsettings.Local.json
+*.user
+*.suo
+.secrets.json
+
+.vs/
+
+# Ignore local and user-specific appsettings files
+**/appsettings.*.json
+!**/appsettings.json
