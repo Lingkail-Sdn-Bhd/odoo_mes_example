@@ -89,3 +89,105 @@ How to verify: Try staging a dummy file containing a mock API key and run git co
 
 What if secrets are already in your Git history?
 If you accidentally pushed a secret already, adding it to .gitignore is not enough because it remains in your commit history. You must remove it using a tool like BFG Repo-Cleaner or git filter-repo, and immediately revoke/rotate the compromised API key or password from the provider dashboard.
+
+# CPS MudBlazor Dashboard – Setup and Odoo Integration
+
+## 1. Prerequisites
+
+Before running the CPS Dashboard, ensure that you have:
+
+- Visual Studio with ASP.NET and web development workload
+- .NET 10 SDK
+- Access to the GitHub repository
+- An Odoo account with API access (only required for sending CPS data)
+
+## 2. Run the CPS Dashboard
+
+1. Clone the GitHub repository.
+2. Open the CPS solution in Visual Studio.
+3. Restore NuGet packages if required.
+4. Build and run the project.
+
+The dashboard displays simulated live sensor readings, including Mixer RPM, Torque, Temperature, Vacuum and Humidity, along with real-time charts.
+
+**Note:** The dashboard simulation can run without an Odoo connection.
+
+## 3. Configure Odoo API Using User Secrets
+
+The Odoo API configuration is stored locally using .NET User Secrets to prevent sensitive credentials from being committed to GitHub.
+
+1. Open the CPS project in Visual Studio.
+2. Right-click the **CPS project** in Solution Explorer.
+3. Select **Manage User Secrets**.
+4. Add the following configuration to `secrets.json`:
+
+```json
+{
+  "Odoo": {
+    "BaseUrl": "https://your-odoo-instance.odoo.com",
+    "Database": "your-database-name",
+    "ApiKey": "YOUR_AUTHORIZED_API_KEY"
+  }
+}
+```
+
+Replace the placeholders with the correct values:
+
+- `BaseUrl`: The URL of the target Odoo instance.
+- `Database`: The actual Odoo database name.
+- `ApiKey`: A valid API key belonging to an authorized Odoo user.
+
+Save the file and restart the application.
+
+**Security:** Never push API keys, passwords or local secrets to GitHub.
+
+## 4. Odoo Database Requirements
+
+The CPS HTTP POST integration has been successfully tested using the `ikitest` Odoo environment.
+
+The integration sends sensor data to the following custom model:
+
+`x_cps_sensor_log`
+
+The target Odoo database must contain these fields:
+
+| Sensor | Technical Field Name |
+|---|---|
+| Mixer RPM | `x_studio_mixer_rpm` |
+| Torque | `x_studio_torque` |
+| Temperature | `x_studio_temperature` |
+| Vacuum | `x_studio_vacuum` |
+| Humidity | `x_studio_humidity` |
+
+The model also uses the `x_name` field for the record name.
+
+If a different Odoo database is used, the same model and fields must be available, and the API user must have permission to create records.
+
+## 5. Send CPS Data to Odoo
+
+1. Run the CPS Dashboard.
+2. Wait for the simulated KPI readings to update.
+3. Click **Send CPS Data** once.
+4. Wait for the success message.
+5. Open Odoo → Manufacturing → CPS Sensor Log.
+6. Refresh the Odoo page to view the newly saved record.
+
+Each successful button click should create one CPS Sensor Log record.
+
+## 6. Troubleshooting
+
+| Error | Possible Cause |
+|---|---|
+| Odoo configuration is missing | BaseUrl or ApiKey has not been configured |
+| HTTP 401 | Invalid or expired API key |
+| HTTP 403 | Insufficient access permissions |
+| HTTP 404 | Incorrect API endpoint, Odoo instance or unavailable custom model |
+| HTTP 500 | Backend configuration or processing error |
+
+## 7. Important Notes
+
+- The dashboard currently uses simulated sensor readings.
+- Odoo credentials are not included in the GitHub repository.
+- Each machine running the backend requires its own authorized Odoo configuration.
+- The CPS Sensor Log model must exist in the target Odoo database.
+- The Odoo record list may require manual refreshing to display newly saved data.
