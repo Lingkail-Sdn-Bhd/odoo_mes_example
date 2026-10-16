@@ -452,6 +452,8 @@
     private double temperature = 38.0;
     private double vacuum = -95.5;
     private double humidity = 55.0;
+    private int postCounter = 0;
+    private bool autoPostInProgress = false;
 
     private bool isSendingCps = false;
     private bool cpsSuccess = false;
@@ -476,7 +478,8 @@
                 rpm,
                 torque,
                 temperature,
-                vacuum
+                vacuum,
+                humidity
             };
 
             using var client = HttpClientFactory.CreateClient();
@@ -484,7 +487,7 @@
 
             using var response =
                 await client.PostAsJsonAsync(
-                    "api/sensor",
+                    "api/cps-odoo-save",
                     sensorData);
 
             var result =
@@ -494,7 +497,7 @@
 
             if (cpsSuccess)
             {
-                cpsResponse = "SUCCESS! CPS data sent to local API. " + result;
+                cpsResponse = "SUCCESS! CPS data sent to Odoo!. " + result;
             }
             else
             {
@@ -509,6 +512,23 @@
         finally
         {
             isSendingCps = false;
+        }
+    }
+
+    private async Task AutoSendCpsDataAsync()
+    {
+        if (autoPostInProgress)
+            return;
+
+        autoPostInProgress = true;
+
+        try
+        {
+            await SendCpsData();
+        }
+        finally
+        {
+            autoPostInProgress = false;
         }
     }
 
@@ -637,6 +657,18 @@
                         (Random.Shared.NextDouble() * 15);
 
                     elapsedSeconds++;
+                    
+                    /*
+                    postCounter++;
+
+                    if (postCounter >= 10)
+                    {
+                        postCounter = 0;
+
+                        _ = AutoSendCpsDataAsync();
+                    }
+
+                    */
 
                     // Keep only the latest 30 readings
                     if (mixerHistory.Count > 30)
@@ -731,6 +763,11 @@
                         GoldenTorque = 10.0
                     });
 
+                    if (torqueHistory.Count > 30)
+                    {
+                        torqueHistory.RemoveAt(0);
+                    }
+
                     temperatureHistory.Add(new TemperaturePoint
                         {
                             Second = elapsedSeconds,
@@ -742,6 +779,16 @@
                     {
                         temperatureHistory.RemoveAt(0);
                     }
+
+                    /*
+                    postCounter++;
+                    if (postCounter >= 10)
+                    {
+                        postCounter = 0;
+
+                        await SendCpsData();
+                    }
+                    */
 
                 });
             }

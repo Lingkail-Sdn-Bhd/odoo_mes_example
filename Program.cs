@@ -551,7 +551,8 @@ app.MapPost("/api/cps-odoo-preview", async (
                 data.Rpm,
                 data.Torque,
                 data.Temperature,
-                data.Vacuum
+                data.Vacuum,
+                data.Humidity
             },
             timestamp = DateTimeOffset.Now
         });
@@ -560,6 +561,86 @@ app.MapPost("/api/cps-odoo-preview", async (
     {
         return Results.Problem(
             "CPS to Odoo preview request failed.");
+    }
+});
+
+app.MapPost("/api/cps-odoo-save", async (
+    CpsSensorRequest data,
+    IHttpClientFactory factory,
+    IConfiguration config) =>
+{
+    var apiKey = config["Odoo:ApiKey"];
+    var baseUrl = config["odoo:BaseUrl"];
+    var database = config["Odoo:Database"];
+
+    if (string.IsNullOrWhiteSpace(apiKey) ||
+        string.IsNullOrWhiteSpace(baseUrl))
+    {
+        return Results.Problem(
+            "Odoo configuration is missing.");
+    }
+
+    try
+    {
+        using var client = factory.CreateClient();
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{baseUrl.TrimEnd('/')}/json/2/x_cps_sensor_log/create");
+
+        request.Headers.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer", apiKey);
+
+        if (!string.IsNullOrWhiteSpace(database))
+        {
+            request.Headers.Add(
+                "X-Odoo-Database", database);
+        }
+
+        request.Content = JsonContent.Create(new
+        {
+            vals_list = new[]
+            {
+                new
+                {
+                    x_name = $"CPS Reading {DateTime.Now:yyy-MM-dd HH:mm:ss}",
+                    x_studio_mixer_rpm = data.Rpm,
+                    x_studio_torque = data.Torque,
+                    x_studio_temperature = data.Temperature,
+                    x_studio_vacuum = data.Vacuum,
+                    x_studio_humidity = data.Humidity
+                }
+            }
+        });
+
+        using var response = await client.SendAsync(request);
+
+        var result = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return Results.Json(new
+            {
+
+                success = false,
+                message = "Odoo save failed.",
+                odooStatus = (int)response.StatusCode
+            }, statusCode: 502);
+        }
+
+        return Results.Ok(new
+        {
+
+            success = true,
+            message = "CPS data saved to Odoo!",
+            odooResponse = result
+        });
+    }
+    catch (Exception)
+    {
+        return Results.Problem(
+            "CPS Odoo save request failed.");
     }
 });
 
