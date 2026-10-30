@@ -2,6 +2,9 @@ using CPS.Components;
 using MudBlazor.Services;
 using ApexCharts;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.HttpLogging;
+using System.Text.Json;
+using System.Net;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -604,7 +607,7 @@ app.MapPost("/api/cps-odoo-save", async (
             {
                 new
                 {
-                    x_name = $"CPS Reading {DateTime.Now:yyy-MM-dd HH:mm:ss}",
+                    x_name = $"CPS Reading {DateTime.Now:yyyy-MM-dd HH:mm:ss}",
                     x_studio_mixer_rpm = data.Rpm,
                     x_studio_torque = data.Torque,
                     x_studio_temperature = data.Temperature,
@@ -641,6 +644,456 @@ app.MapPost("/api/cps-odoo-save", async (
     {
         return Results.Problem(
             "CPS Odoo save request failed.");
+    }
+});
+
+// SPC - READ CPS SENSOR HISTORY
+
+app.MapGet("/api/spc-history", async (
+    IHttpClientFactory factory,
+    IConfiguration config) =>
+{
+    var apiKey = config["Odoo:ApiKey"];
+    var baseUrl = config["Odoo:BaseUrl"];
+    var database = config["Odoo:Database"];
+
+    if (string.IsNullOrWhiteSpace(apiKey) ||
+        string.IsNullOrWhiteSpace(baseUrl))
+    {
+        return Results.Problem(
+            "Odoo configuration is missing.");
+    }
+
+    try
+    {
+        using var client = factory.CreateClient();
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{baseUrl.TrimEnd('/')}/json/2/x_cps_sensor_log/search_read");
+
+        request.Headers.Authorization =
+           new System.Net.Http.Headers.AuthenticationHeaderValue(
+               "Bearer", apiKey);
+
+        if (!string.IsNullOrWhiteSpace(database))
+        {
+            request.Headers.Add(
+                "X-Odoo-Database", database);
+        }
+
+        request.Content = JsonContent.Create(new
+        {
+            domain = Array.Empty<object>(),
+
+            fields = new[]
+            {
+                "id",
+                "create_date",
+                "x_studio_mixer_rpm",
+                "x_studio_torque",
+                "x_studio_temperature",
+                "x_studio_vacuum",
+                "x_studio_humidity"
+
+            },
+
+            order = "create_date desc, id desc",
+
+            limit = 100
+        });
+
+        using var response = await client.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return Results.Json(new
+            {
+                success = false,
+                message = "Failed to read CPS sensor history.",
+                odooStatus = (int)response.StatusCode
+            }, statusCode: 502);
+        }
+
+        var result = await response.Content.ReadAsStringAsync();
+
+        return Results.Content(
+            result,
+            "application/json");
+    }
+    catch (Exception)
+    {
+        return Results.Problem(
+            "SPC history request failed.");
+    }
+});
+
+// SPC - CALCULATE CONTROL LIMITS
+
+
+app.MapGet("/api/spc-calculate", async (
+    IHttpClientFactory factory,
+    IConfiguration config) =>
+{
+    var apiKey = config["Odoo:ApiKey"];
+    var baseUrl = config["Odoo:BaseUrl"];
+    var database = config["Odoo:Database"];
+
+    if (string.IsNullOrWhiteSpace(apiKey) ||
+        string.IsNullOrWhiteSpace(baseUrl))
+    {
+        return Results.Problem(
+            "Odoo configuration is missing.");
+    }
+
+    try
+    {
+        using var client = factory.CreateClient();
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{baseUrl.TrimEnd('/')}/json/2/x_cps_sensor_log/search_read");
+
+        request.Headers.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer", apiKey);
+
+        if (!string.IsNullOrWhiteSpace(database))
+        {
+            request.Headers.Add(
+                "X-Odoo-Database", database);
+        }
+
+        request.Content = JsonContent.Create(new
+        {
+            domain = Array.Empty<object>(),
+
+            fields = new[]
+            {
+                "id",
+                "create_date",
+                "x_studio_mixer_rpm",
+                "x_studio_torque",
+                "x_studio_temperature",
+                "x_studio_vacuum",
+                "x_studio_humidity"
+            },
+
+            order = "create_date desc, id desc",
+            limit = 100
+        });
+
+        using var response = await client.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return Results.Json(new
+            {
+                success = false,
+                message = "Failed to retrieve sensor data.",
+                odooStatus = (int)response.StatusCode
+            }, statusCode: 502);
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+
+        using var document =
+            System.Text.Json.JsonDocument.Parse(json);
+
+        if (document.RootElement.ValueKind !=
+            System.Text.Json.JsonValueKind.Array)
+        {
+            return Results.Problem(
+                "Unexpected Odoo response format.");
+        }
+
+        var records = document.RootElement
+            .EnumerateArray()
+            .ToList();
+
+        if (records.Count < 3)
+        {
+            return Results.BadRequest(new
+            {
+                success = false,
+                message = "Not enough historical readings for SPC calculation."
+            });
+        }
+
+        // Odoo returns newest first.
+        // Reverse to chronological order.
+        records.Reverse();
+
+        // Calculate SPC for each sensor parameter.
+        object CalculateSpc(string fieldName, string parameter)
+        {
+            var values = records
+                .Select(r => r.GetProperty(fieldName).GetDouble())
+                .ToList();
+
+            double mean = values.Average();
+
+            var movingRanges = values
+                .Skip(1)
+                .Zip(
+                    values,
+                    (current, previous) =>
+                        Math.Abs(current - previous))
+                .ToList();
+
+            double averageMR = movingRanges.Average();
+
+            double ucl = mean + (2.66 * averageMR);
+            double lcl = mean - (2.66 * averageMR);
+
+            double actualValue = values.Last();
+
+            string status =
+                actualValue > ucl || actualValue < lcl
+                    ? "Out of Control"
+                    : "In Control";
+
+            return new
+            {
+                parameter,
+                sampleCount = values.Count,
+                centerLine = Math.Round(mean, 3),
+                actualValue = Math.Round(actualValue, 3),
+                ucl = Math.Round(ucl, 3),
+                lcl = Math.Round(lcl, 3),
+                processStatus = status
+            };
+        }
+
+        var results = new[]
+        {
+            CalculateSpc(
+                "x_studio_mixer_rpm", "RPM"),
+
+            CalculateSpc(
+                "x_studio_torque", "Torque"),
+
+            CalculateSpc(
+                "x_studio_temperature", "Temperature"),
+
+            CalculateSpc(
+                "x_studio_vacuum", "Vacuum"),
+
+            CalculateSpc(
+                "x_studio_humidity", "Humidity")
+        };
+
+        return Results.Ok(new
+        {
+            success = true,
+            mode = "SPC CALCULATION PREVIEW",
+            method = "Individuals-Moving Range (I-MR)",
+            message = "SPC calculated successfully. No data saved to Odoo.",
+            results
+        });
+    }
+    catch (Exception)
+    {
+        return Results.Problem(
+            "SPC calculation failed.");
+    }
+});
+
+// SPC - SAVE RESULTS TO ODOO
+
+app.MapPost("/api/spc-save", async (
+    IHttpClientFactory factory,
+    IConfiguration config) =>
+{
+    var apiKey = config["Odoo:ApiKey"];
+    var baseUrl = config["Odoo:BaseUrl"];
+    var database = config["Odoo:Database"];
+
+    if (string.IsNullOrWhiteSpace(apiKey) ||
+        string.IsNullOrWhiteSpace(baseUrl))
+    {
+        return Results.Problem(
+            "Odoo configuration is missing.");
+    }
+
+    try
+    {
+        using var client = factory.CreateClient();
+
+        // STEP 1: Read CPS sensor history
+        using var historyRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{baseUrl.TrimEnd('/')}/json/2/x_cps_sensor_log/search_read");
+
+        historyRequest.Headers.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer", apiKey);
+
+        if (!string.IsNullOrWhiteSpace(database))
+        {
+            historyRequest.Headers.Add(
+                "X-Odoo-Database", database);
+        }
+
+        historyRequest.Content = JsonContent.Create(new
+        {
+            domain = Array.Empty<object>(),
+            fields = new[]
+            {
+                "id",
+                "create_date",
+                "x_studio_mixer_rpm",
+                "x_studio_torque",
+                "x_studio_temperature",
+                "x_studio_vacuum",
+                "x_studio_humidity"
+            },
+            order = "create_date desc, id desc",
+            limit = 100
+        });
+
+        using var historyResponse =
+            await client.SendAsync(historyRequest);
+
+        if (!historyResponse.IsSuccessStatusCode)
+        {
+            return Results.Problem(
+                "Failed to retrieve CPS sensor history.");
+        }
+
+        var json =
+            await historyResponse.Content.ReadAsStringAsync();
+
+        using var document =
+            System.Text.Json.JsonDocument.Parse(json);
+
+        if (document.RootElement.ValueKind !=
+            System.Text.Json.JsonValueKind.Array)
+        {
+            return Results.Problem(
+                "Unexpected CPS history response.");
+        }
+
+        var records = document.RootElement
+            .EnumerateArray()
+            .ToList();
+
+        if (records.Count < 3)
+        {
+            return Results.BadRequest(
+                "Not enough historical readings.");
+        }
+
+        records.Reverse();
+
+        // STEP 2: Calculate SPC statistics
+        object CalculateSpc(string fieldName, string parameter)
+        {
+            var values = records
+                .Select(r => r.GetProperty(fieldName).GetDouble())
+                .ToList();
+
+            double mean = values.Average();
+
+            var movingRanges = values
+                .Skip(1)
+                .Zip(
+                    values,
+                    (current, previous) =>
+                        Math.Abs(current - previous))
+                .ToList();
+
+            double averageMR = movingRanges.Average();
+
+            double ucl = mean + (2.66 * averageMR);
+            double lcl = mean - (2.66 * averageMR);
+
+            double actualValue = values.Last();
+
+            string status =
+                actualValue > ucl || actualValue < lcl
+                    ? "Out of Control"
+                    : "In Control";
+
+            return new
+            {
+                x_name =
+                    $"SPC {parameter} {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}",
+
+                x_studio_timestamp =
+                    DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"),
+
+                x_studio_parameter = parameter,
+
+                x_studio_center_line = Math.Round(mean, 3),
+
+                x_studio_actual_value = Math.Round(actualValue, 3),
+
+                x_studio_ucl = Math.Round(ucl, 3),
+
+                x_studio_lcl = Math.Round(lcl, 3),
+
+                x_studio_process_status = status
+            };
+        }
+
+        // STEP 3: Prepare five SPC records
+        var spcRecords = new[]
+        {
+            CalculateSpc("x_studio_mixer_rpm", "RPM"),
+            CalculateSpc("x_studio_torque", "Torque"),
+            CalculateSpc("x_studio_temperature", "Temperature"),
+            CalculateSpc("x_studio_vacuum", "Vacuum"),
+            CalculateSpc("x_studio_humidity", "Humidity")
+        };
+
+        // STEP 4: Save results to Odoo SPC
+        using var saveRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{baseUrl.TrimEnd('/')}/json/2/x_spc/create");
+
+        saveRequest.Headers.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer", apiKey);
+
+        if (!string.IsNullOrWhiteSpace(database))
+        {
+            saveRequest.Headers.Add(
+                "X-Odoo-Database", database);
+        }
+
+        saveRequest.Content = JsonContent.Create(new
+        {
+            vals_list = spcRecords
+        });
+
+        using var saveResponse =
+            await client.SendAsync(saveRequest);
+
+        if (!saveResponse.IsSuccessStatusCode)
+        {
+            var odooError =
+                await saveResponse.Content.ReadAsStringAsync();
+
+            return Results.Json(new
+            {
+                success = false,
+                message = "Failed to save SPC results.",
+                odooStatus = (int)saveResponse.StatusCode
+            }, statusCode: 502);
+        }
+
+        return Results.Ok(new
+        {
+            success = true,
+            message = "SPC results saved to Odoo!",
+            recordsSubmitted = spcRecords.Length
+        });
+    }
+    catch (Exception)
+    {
+        return Results.Problem(
+            "SPC save request failed.");
     }
 });
 
